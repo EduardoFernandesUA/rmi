@@ -45,7 +45,7 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
-        self.locs = [(20,0), (20, -10), (-4, -10), (-4,-2), (0, -2), (0,0)]*10
+        self.locs = [(20,0), (20, -10), (-4, -10), (-4,-2), (0, -2), (0,0)]*100
 
         self.pid = PID(0.05, 0 ,0.03)
         self.karman = KalmanFilter(0, 0.02)
@@ -98,6 +98,16 @@ class MyRob(CRobLinkAngs):
         x, y, a = self.gps.update(self.outl, self.outr, radians(self.measures.compass))
         print("Position:", x, y, a)
 
+        # use line sensors to center coords
+        if self.measures.lineSensor[2]=='1' and self.measures.lineSensor[3]=='1' and self.measures.lineSensor[4]=='1':
+            if abs(a)<0.1 or abs(a)-pi<0.1: # moving horizontally (center Y)
+                y += (round(y)-y)*0.01
+                self.gps.y = y
+            elif abs(a)-pi/2<0.1: # moving vertically (center X)
+                x += (round(x)-x)*0.01
+                self.gps.x = x
+        
+
         # self.closePaths(x, y, a)
             
 
@@ -107,6 +117,11 @@ class MyRob(CRobLinkAngs):
             mr = 0
         else:
             ml, mr, self.gps.x, self.gps.y = self.driveTo(x, y, a, self.locs[0][0], self.locs[0][1])
+
+        # add PID adjustment
+        # pidL, pidR = self.pid.follow_line(self.measures.lineSensor)
+        # ml += pidL*0.1
+        # mr += pidR*0.1
         
         # print("[driveTo]", ml, mr)
 
@@ -154,8 +169,12 @@ class MyRob(CRobLinkAngs):
         dif += -pi*2 if (dif>pi) else 2*pi if (dif<-pi) else 0
 
         print("[drive To]", dif)
+        pidPercentage = 0.5
+        pixL, pidR = self.pid.follow_line(self.measures.lineSensor)
+        turn = -pixL*pidPercentage + dif*(1-pidPercentage)
+        
 
-        return min(0.15, max(-0.15, speed-dif)), min(0.15, max(-0.15, speed+dif)), x, y
+        return min(0.15, max(-0.15, speed-turn)), min(0.15, max(-0.15, speed+turn)), x, y
 
     def fillMap(self, x, y, a):
         x = round(x)
@@ -208,7 +227,7 @@ class PID:
         print("lineSensor Error & PID:", error, pid_output)
 
         speed = 0.15
-        return max(-speed, min(speed, speed - pid_output)), max(-speed, min(speed, speed + pid_output))
+        return max(-speed, min(speed, -pid_output)), max(-speed, min(speed, +pid_output))
 
 class GPS:
     def __init__(self, x, y, a):
