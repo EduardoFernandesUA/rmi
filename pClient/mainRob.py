@@ -10,21 +10,17 @@ class KalmanFilter:
     def __init__(self, initial_state, initial_variance):
         self.state = initial_state
         self.variance = initial_variance
+        self.measurement_variance = 0.02
+        self.process_variance = 0.02
 
-    def measurement_update(self, measured_value, measurement_variance):
-        kalman_gain = self.variance / (self.variance + measurement_variance)
-        diff = measured_value - self.state
-
-        while diff<=-pi: diff += pi*2
-        while diff>=pi: diff += -pi*2
-
+    def measurement_update(self, measured_value):
+        kalman_gain = self.variance / (self.variance + self.measurement_variance)
         self.state = self.state + kalman_gain * (measured_value - self.state)
         self.variance = (1 - kalman_gain) * self.variance
-        print("MEASUREMENT_UPDATE", self.state)
         return self.state, self.variance
 
-    def prediction(self, dynamic_model, process_variance):
-        self.variance = (dynamic_model-self.state)**2 * self.variance + process_variance
+    def prediction(self, dynamic_model):
+        self.variance = (dynamic_model-self.state)**2 * self.variance + self.process_variance
         self.state = dynamic_model
         return self.state, self.variance
 
@@ -49,7 +45,9 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
-        self.pid = PID(0.1, 0 ,0.03)
+        self.locs = [(20,0), (20, -10), (-4, -10), (-4,-2), (0, -2), (0,0)]*10
+
+        self.pid = PID(0.05, 0 ,0.03)
         self.karman = KalmanFilter(0, 0.02)
 
         self.outl, self.outr = 0, 0
@@ -93,23 +91,24 @@ class MyRob(CRobLinkAngs):
     def drive(self):
         print("Drive:")
         print("\t",self.measures.lineSensor)
-        print("\t","error", )
+        print("\t",radians(self.measures.compass))
 
         # get current x and y approximations
         # inputs are based on previous frame calculations plus current compass
-        x, y, a = self.gps.update(self.outl, self.outr, self.measures.compass)
-        # if a<=0: a = -pi+a
-        # elif a>pi
+        x, y, a = self.gps.update(self.outl, self.outr, radians(self.measures.compass))
         print("Position:", x, y, a)
 
-        self.closePaths(x, y, a)
+        # self.closePaths(x, y, a)
             
 
         # get next movement action
-        # ml, mr = self.pid.follow_line(self.measures.lineSensor)
-        ml, mr = self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
-        print("[driveTo]", self.nextPos)
-        print("[driveTo]", ml, mr)
+        if len(self.locs)==0: 
+            ml = 0
+            mr = 0
+        else:
+            ml, mr, self.gps.x, self.gps.y = self.driveTo(x, y, a, self.locs[0][0], self.locs[0][1])
+        
+        # print("[driveTo]", ml, mr)
 
         self.driveMotors(ml, mr)
         self.outl = (self.outl + ml) / 2 
@@ -119,54 +118,36 @@ class MyRob(CRobLinkAngs):
 
         return
 
-    def closePaths(self, x, y, oa):
-        # l0x = x + 0.438*cos(a) + 0.08*3*cos(a+pi/2)
-        # l0y = y + 0.438*sin(a) + 0.08*3*sin(a+pi/2)
-        # if round(l0x)%2==0 and round(l0y)%2==0:
-        #     if self.measures.lineSensor[0]=='1':
-        #         self.map.put('?', round(l0x+cos(a+pi/2)), round(l0y+sin(a+pi/2)))
-
-        for i in range(7):
-            sx = x + 0.438*cos(oa) + 0.08*cos(oa-pi/2)*(i-3)
-            sy = y + 0.438*sin(oa) + 0.08*sin(oa-pi/2)*(i-3)
+    def closePaths(self, x, y, a):
+        for s in range(7): # for each sensor
+            if self.measures.lineSensor[s]=='0': continue
+            sx = x+0.438*cos(a)+cos(a-pi/2)*0.08*(s-3)
+            sy = y+0.438*sin(a)+sin(a-pi/2)*0.08*(s-3)
+            print("sensor", s, (sx, sy))
             ix = round(sx)
             iy = round(sy)
-            a = round(oa/(pi/4))*(pi/4)
-            if ix%2==0 and iy%2==0 and self.measures.lineSensor[3]=='1':
-                print("\n[closePaths]", ix, iy, a, oa)
-                print("[closePaths - S]", i, sx, sy)
-                dx = sx*round(cos(a)) > ix + cos(a)*0.25 if cos(a)!=0 else abs(sx - ix) < 0.08
-                dy = sy*round(sin(a)) > iy + sin(a)*0.25 if sin(a)!=0 else abs(sy - iy) < 0.08
-                print("[closePaths]:", (ix, iy), dx, dy)
-                if dx and dy:
-                    self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
-
-                a = a-pi/2
-                dx = sx*round(cos(a)) > ix + cos(a)*0.25 if cos(a)!=0 else abs(sx - ix) < 0.08
-                dy = sy*round(sin(a)) > iy + sin(a)*0.25 if sin(a)!=0 else abs(sy - iy) < 0.08
-                print("[closePaths]:", (ix, iy), dx, dy)
-                if dx and dy:
-                    self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
-
-
-
-        # l6x = x + 0.438*cos(a) + 0.08*3*cos(a-pi/2)
-        # l6y = y + 0.438*sin(a) + 0.08*3*sin(a-pi/2)
-        # if round(l6x)%2==0 and round(l6y)%2==0:
-        #     if self.measures.lineSensor[6]=='1':
-        #         self.map.put('?', round(l6x+cos(a-pi/2)), round(l6y+sin(a-pi/2)))
+            if ix%2==0 and iy%2==0:
+                # print("on intersection", (ix, iy))
+                if  (abs(1-cos(a))<0.1 and sx > ix+0.15) or \
+                    (abs(1+sin(a))<0.1 and sy < iy-0.15) or \
+                    (abs(1+cos(a))<0.1 and sx < ix-0.15) or \
+                    (abs(1-sin(a))<0.1 and sy > iy+0.15):
+                    print(abs(1-cos(a)), abs(1+sin(a)), abs(1+cos(a)), abs(1-sin(a)))
+                    if self.map.get(round(ix+cos(a)), round(iy+sin(a))) == ' ':
+                        self.map.put('?', round(ix+cos(a)), round(iy+sin(a)))
 
     def driveTo(self, x, y, a, dx, dy): # dx/dy -> destination x/y
         distance = sqrt(pow(dx-x, 2) + pow(dy-y,2))
-        if distance<0.05:# or self.measures.lineSensor[3]=='0': 
-            inFront = self.map.get(round(x+cos(a)), round(y+sin(a)))
-            if inFront=='?':
-                self.nextPos = (round(x+round(cos(a))*2), round(y+round(sin(a))*2))
-                self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
-            else:
-                return -0.1, 0.1
+        if distance<0.15:# or self.measures.lineSensor[3]=='0': 
+            self.locs = self.locs[1::]
+            # inFront = self.map.get(round(x+cos(a)), round(y+sin(a)))
+            # if inFront=='?':
+            #     self.nextPos = (round(x+round(cos(a))*2), round(y+round(sin(a))*2))
+            #     self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
+            # else:
+            #     return -0.1, 0.1
             
-        speed = min(0.15, max(0.05, distance/5))
+        speed = min(0.15, max(0.05, distance/2))
 
         da = atan2(dy-y, dx-x)
         dif = da - a
@@ -174,7 +155,7 @@ class MyRob(CRobLinkAngs):
 
         print("[drive To]", dif)
 
-        return min(0.15, max(0, speed-dif)), min(0.15, max(0, speed+dif))
+        return min(0.15, max(-0.15, speed-dif)), min(0.15, max(-0.15, speed+dif)), x, y
 
     def fillMap(self, x, y, a):
         x = round(x)
@@ -226,7 +207,7 @@ class PID:
 
         print("lineSensor Error & PID:", error, pid_output)
 
-        speed = 0.10
+        speed = 0.15
         return max(-speed, min(speed, speed - pid_output)), max(-speed, min(speed, speed + pid_output))
 
 class GPS:
@@ -239,13 +220,13 @@ class GPS:
     def update(self, outl, outr, compass):
         lin = (outl + outr) / 2
         rot = outr - outl
-        a = self.a + rot
-        while a<=-pi: a += pi*2
-        while a>=pi: a += -pi*2
-        self.karman.prediction(a, 0.02)
+        self.karman.prediction(rot)
 
-        state, variance = self.karman.measurement_update(radians(compass), 0.02)
-        self.a = state
+        diff = compass - self.a
+        while diff<-pi: diff+=2*pi
+        while diff>pi: diff-=2*pi
+        state, variance = self.karman.measurement_update(diff)
+        self.a = self.a + state
         self.x = self.x + lin * cos(self.a)
         self.y = self.y + lin * sin(self.a)
 
@@ -253,11 +234,13 @@ class GPS:
 
 class Map():
     def __init__(self):
-        self.labMap = [[' '] * (CELLCOLS*4-1) for _ in range(CELLROWS*4-1) ]
+        self.labMap = [[' '] * (CELLCOLS*5-1) for _ in range(CELLROWS*5-1) ]
 
     def put(self, char, x, y):
         print("INSERT",char,"at",y+CELLROWS, x+CELLCOLS)
-        self.labMap[y+CELLROWS][x+CELLCOLS] = char
+        # if self.labMap[y+CELLROWS][x+CELLCOLS]==' ':
+        if (char == '?' and self.labMap[y+CELLROWS][x+CELLCOLS]==' ') or (char!='?'):
+            self.labMap[y+CELLROWS][x+CELLCOLS] = char
 
     def get(self, x, y):
         return self.labMap[y+CELLROWS][x+CELLCOLS]

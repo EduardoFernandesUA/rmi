@@ -1,64 +1,88 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import time
 
-# Kalman filter class
-class KalmanFilter:
-    def __init__(self, initial_estimate, process_noise, measurement_noise):
-        self.estimate = initial_estimate
-        self.estimate_error = 1.0
-        self.process_noise = process_noise
-        self.measurement_noise = measurement_noise
+class AngularDifferenceKalmanFilter:
+    def __init__(self, initial_state, initial_variance, process_variance, measurement_variance):
+        self.state = initial_state
+        self.variance = initial_variance
+        self.process_variance = process_variance
+        self.measurement_variance = measurement_variance
 
-    def update(self, measurement):
-        # Prediction step
-        prediction = self.estimate
-        prediction_error = self.estimate_error + self.process_noise
+    def measurement_update(self, angular_measurement):
+        # Calculate Kalman Gain
+        kalman_gain = self.variance / (self.variance + self.measurement_variance)
 
-        # Update step
-        kalman_gain = prediction_error / (prediction_error + self.measurement_noise)
-        self.estimate = prediction + kalman_gain * (measurement - prediction)
-        self.estimate_error = (1 - kalman_gain) * prediction_error
+        # Compute angular difference
+        angular_difference = angular_measurement - self.state
 
-        return self.estimate
+        # Adjust angular difference to the range [-pi, pi)
+        while angular_difference >= np.pi:
+            angular_difference -= 2 * np.pi
+        while angular_difference < -np.pi:
+            angular_difference += 2 * np.pi
 
-# True angle generation with noise
-np.random.seed(42)  # for reproducibility
+        # Update state estimate
+        self.state = self.state + kalman_gain * angular_difference
+
+        # Update state variance
+        self.variance = (1 - kalman_gain) * self.variance
+
+        # Output current state estimate and variance
+        return self.state, self.variance
+
+    def prediction(self, angular_velocity):
+        # Predict next state based on the dynamic model (angular velocity)
+        predicted_state = self.state + angular_velocity
+
+        # Adjust predicted state to the range [-pi, pi)
+        while predicted_state >= np.pi:
+            predicted_state -= 2 * np.pi
+        while predicted_state < -np.pi:
+            predicted_state += 2 * np.pi
+
+        # Predict next state variance
+        self.variance = self.variance + self.process_variance
+
+        # Output predicted state estimate and variance
+        return predicted_state, self.variance
+
+# Example usage:
+# Initial parameters
+initial_state = 0.0
+initial_variance = 1.0
+process_variance = 0.1
+measurement_variance = 0.1
+
+# Create AngularDifferenceKalmanFilter instance
+angular_kalman_filter = AngularDifferenceKalmanFilter(initial_state, initial_variance, process_variance, measurement_variance)
+
+# Simulate time steps
 num_steps = 100
-true_angle = np.zeros(num_steps)
-measured_angle = np.zeros(num_steps)
+true_angular_velocity = np.linspace(0, 0.1, num_steps) + np.random.normal(0, 0.01, num_steps)  # Simulated true angular velocity with noise
+angular_measurements = np.cumsum(true_angular_velocity) + np.random.normal(0, np.sqrt(measurement_variance), num_steps)  # Simulated angular measurements
 
-for t in range(1, num_steps):
-    true_angle[t] = true_angle[t-1] + np.random.normal(0, 0.1)  # Random noise with std dev of 0.1
-    measured_angle[t] = true_angle[t] + np.random.normal(0, 0.01 * np.abs(true_angle[t]))
+# Lists to store filter outputs
+filtered_angular_differences = []
 
-# Kalman filter parameters
-initial_estimate = 0.0
-process_noise = 0.01  # Process noise (you may need to adjust this value)
-measurement_noise = 0.01  # Measurement noise (1% error)
-
-# Create Kalman filter instance
-kalman_filter = KalmanFilter(initial_estimate, process_noise, measurement_noise)
-
-# Plot results in real-time
-plt.ion()  # Turn on interactive mode
-fig, ax = plt.subplots()
-
+# Kalman filter loop
 for t in range(num_steps):
-    # Apply Kalman filter to noisy measurement
-    kalman_estimate = kalman_filter.update(measured_angle[t])
+    # Step 1: Measurement Update
+    angular_state_estimate, angular_state_variance = angular_kalman_filter.measurement_update(angular_measurements[t])
 
-    # Plot results
-    ax.clear()
-    ax.plot(true_angle[:t+1], label='True Angle', linestyle='--')
-    ax.plot(measured_angle[:t+1], label='Measured Angle with 1% Error', marker='o', linestyle='', alpha=0.7)
-    ax.plot(range(t+1), [kalman_filter.update(measured_angle[i]) for i in range(t+1)], label='Kalman Filter Estimate', marker='o', linestyle='-', alpha=0.7)
+    # Save filter output
+    filtered_angular_differences.append(angular_state_estimate)
 
-    ax.set_title('Kalman Filter for Angle Estimation (Real-time)')
-    ax.set_xlabel('Time Steps')
-    ax.set_ylabel('Angle')
-    ax.legend()
-    plt.pause(0.1)  # Pause for a short time to create a real-time effect
+    # Step 2: Prediction
+    angular_velocity = 0.1  # Example angular velocity
+    angular_kalman_filter.prediction(angular_velocity)
 
-plt.ioff()  # Turn off interactive mode after the loop
+# Plot results
+import matplotlib.pyplot as plt
+
+plt.plot(true_angular_velocity, label='True Angular Velocity', linestyle='--')
+plt.plot(angular_measurements, label='Angular Measurements', marker='o', linestyle='', alpha=0.7)
+plt.plot(filtered_angular_differences, label='Filtered Angular Differences', marker='o', linestyle='-', alpha=0.7)
+plt.title('Angular Difference Kalman Filter Example')
+plt.xlabel('Time Steps')
+plt.ylabel('Angular Values')
+plt.legend()
 plt.show()
