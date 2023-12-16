@@ -3,8 +3,8 @@ import sys
 from croblink import *
 from math import cos, sin, pi, radians, sqrt, atan2
 
-CELLROWS=7
-CELLCOLS=14
+CELLROWS=7*2
+CELLCOLS=14*2
 
 class KalmanFilter:
     def __init__(self, initial_state, initial_variance):
@@ -45,9 +45,9 @@ class MyRob(CRobLinkAngs):
         state = 'stop'
         stopped_state = 'run'
 
-        self.locs = [(20,0), (20, -10), (-4, -10), (-4,-2), (0, -2), (0,0)]*100
+        # self.locs = [(20,0), (20, -10), (-4, -10), (-4,-2), (0, -2), (0,0)]*100
 
-        self.pid = PID(0.05, 0 ,0.03)
+        self.pid = PID(0.1, 0 ,0.0)
         self.karman = KalmanFilter(0, 0.02)
 
         self.outl, self.outr = 0, 0
@@ -101,22 +101,22 @@ class MyRob(CRobLinkAngs):
         # use line sensors to center coords
         if self.measures.lineSensor[2]=='1' and self.measures.lineSensor[3]=='1' and self.measures.lineSensor[4]=='1':
             if abs(a)<0.1 or abs(a)-pi<0.1: # moving horizontally (center Y)
-                y += (round(y)-y)*0.01
+                y += (round(y)-y)*0.001
                 self.gps.y = y
             elif abs(a)-pi/2<0.1: # moving vertically (center X)
-                x += (round(x)-x)*0.01
+                x += (round(x)-x)*0.001
                 self.gps.x = x
         
 
-        # self.closePaths(x, y, a)
+        self.closePaths(x, y, a)
             
 
         # get next movement action
-        if len(self.locs)==0: 
-            ml = 0
-            mr = 0
-        else:
-            ml, mr, self.gps.x, self.gps.y = self.driveTo(x, y, a, self.locs[0][0], self.locs[0][1])
+        # if len(self.locs)==0: 
+        #     ml = 0
+        #     mr = 0
+        # else:
+        ml, mr, self.gps.x, self.gps.y = self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
 
         # add PID adjustment
         # pidL, pidR = self.pid.follow_line(self.measures.lineSensor)
@@ -134,34 +134,77 @@ class MyRob(CRobLinkAngs):
         return
 
     def closePaths(self, x, y, a):
-        for s in range(7): # for each sensor
-            if self.measures.lineSensor[s]=='0': continue
-            sx = x+0.438*cos(a)+cos(a-pi/2)*0.08*(s-3)
-            sy = y+0.438*sin(a)+sin(a-pi/2)*0.08*(s-3)
-            print("sensor", s, (sx, sy))
+        # for s in range(7): # for each sensor
+        #     if self.measures.lineSensor[s]=='0': continue
+        #     sx = x+0.438*cos(a)+cos(a-pi/2)*0.08*(s-3)
+        #     sy = y+0.438*sin(a)+sin(a-pi/2)*0.08*(s-3)
+
+        def rnd(n):
+            return int(n*100)/100
+
+        # front sensors
+        if self.measures.lineSensor[3]=='1':
+            sx = x+0.438*cos(a)
+            sy = y+0.438*sin(a)
             ix = round(sx)
             iy = round(sy)
-            if ix%2==0 and iy%2==0:
-                # print("on intersection", (ix, iy))
-                if  (abs(1-cos(a))<0.1 and sx > ix+0.15) or \
-                    (abs(1+sin(a))<0.1 and sy < iy-0.15) or \
-                    (abs(1+cos(a))<0.1 and sx < ix-0.15) or \
-                    (abs(1-sin(a))<0.1 and sy > iy+0.15):
-                    print(abs(1-cos(a)), abs(1+sin(a)), abs(1+cos(a)), abs(1-sin(a)))
-                    if self.map.get(round(ix+cos(a)), round(iy+sin(a))) == ' ':
-                        self.map.put('?', round(ix+cos(a)), round(iy+sin(a)))
+            if ix%2!=0 or iy%2!=0: return
+            # if abs(a%(pi/2))>0.2: return
+            print("closePaths front:", (rnd(sx), rnd(sy)), (ix, iy), (rnd(sx-ix), rnd(sy-iy)))
+            # mdist = ((x-ix)**2 + (y-iy)**2)**(0.5)
+            # sdist = ((sx-ix)**2 + (sy-iy)**2)**(0.5)
+            rca = round(cos(a))
+            rsa = round(sin(a))
+            if (sx - ix) * rca > 0.2 or (sy - iy) * rsa > 0.2:
+                self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
+
+        # left sensors
+        # if '1' in self.measures.lineSensor[0:2]:
+        #     sx = x+0.438*cos(a)+0.08*3*cos(a+pi/2)
+        #     sy = y+0.438*sin(a)+0.08*3*sin(a+pi/2)
+        #     ix = round(sx)
+        #     iy = round(sy)
+        #     if ix%2!=0 or iy%2!=0: return
+        #     # if abs(a%(pi/2))>0.2: return
+        #     print("closePaths left:", (rnd(sx), rnd(sy)), (ix, iy), (rnd(sx-ix), rnd(sy-iy)))
+        #     rca = round(cos(a+pi/2))
+        #     rsa = round(sin(a+pi/2))
+        #     if (sx - ix) * rca > 0.2 or (sy - iy) * rsa > 0.2:
+        #         self.map.put('?', ix+round(cos(a+pi/2)), iy+round(sin(a+pi/2)))
+        #
+        # if '1' in self.measures.lineSensor[5:7]:
+        #     sx = x+0.438*cos(a)+0.08*3*cos(a-pi/2)
+        #     sy = y+0.438*sin(a)+0.08*3*sin(a-pi/2)
+        #     ix = round(sx)
+        #     iy = round(sy)
+        #     if ix%2!=0 or iy%2!=0: return
+        #     # if abs(a%(pi/2))>0.2: return
+        #     print("closePaths left:", (rnd(sx), rnd(sy)), (ix, iy), (rnd(sx-ix), rnd(sy-iy)))
+        #     rca = round(cos(a-pi/2))
+        #     rsa = round(sin(a-pi/2))
+        #     if (sx - ix) * rca > 0.2 or (sy - iy) * rsa > 0.2:
+        #         self.map.put('?', ix+round(cos(a-pi/2)), iy+round(sin(a-pi/2)))
+
+            # if abs(a%0.785)<0.3 and sqrt(pow(sx-ix, 2) + pow(sy-iy, 2))>0.2 and sqrt(pow(x-ix, 2) + pow(y-iy, 2))<0.2:
+            #     print("FOUND NEW PATH", ix+round(cos(a)), iy+round(sin(a)))
+            #     self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
+        
+
 
     def driveTo(self, x, y, a, dx, dy): # dx/dy -> destination x/y
         distance = sqrt(pow(dx-x, 2) + pow(dy-y,2))
-        if distance<0.15:# or self.measures.lineSensor[3]=='0': 
-            self.locs = self.locs[1::]
-            # inFront = self.map.get(round(x+cos(a)), round(y+sin(a)))
-            # if inFront=='?':
-            #     self.nextPos = (round(x+round(cos(a))*2), round(y+round(sin(a))*2))
-            #     self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
-            # else:
-            #     return -0.1, 0.1
-            
+        if distance<0.1:# or self.measures.lineSensor[3]=='0': 
+            # self.gps.x += (self.gps.x - round(x))*0.5
+            # self.gps.y += (self.gps.y - round(y))*0.5
+            # return -0.1, 0.1, x, y
+            # self.locs = self.locs[1::]
+            inFront = self.map.get(round(x+cos(a)), round(y+sin(a)))
+            if inFront=='?':
+                self.nextPos = (round(x+round(cos(a))*2), round(y+round(sin(a))*2))
+                self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
+            else:
+                return -0.1, 0.1, x, y
+
         speed = min(0.15, max(0.05, distance/2))
 
         da = atan2(dy-y, dx-x)
@@ -179,16 +222,16 @@ class MyRob(CRobLinkAngs):
     def fillMap(self, x, y, a):
         x = round(x)
         y = round(y) 
-        if x%2!=0 and y%2==0:
-            if abs(a)<0.2 or abs(a/pi)<0.2:
+        if x%2!=0 and y%2==0: # -
+            if abs(a)<0.2 or abs(a-pi if a>0 else a+pi)<0.2:
                 self.map.put('-', x, y)
-        elif x%2==0 and y%2!=0:
+        elif x%2==0 and y%2!=0: # |
             if abs(a+pi/2)<0.2 or abs(a-pi/2)<0.2:
                 self.map.put('|', x, y)
         elif x%2!=0 and y%2!=0:
-            if abs(a+pi/4)<0.2 or abs(a-3*pi/4)<0.2:
+            if abs(a+pi/4)<0.2 or abs(a-3*pi/4)<0.2: # \
                 self.map.put('\\', x, y)
-            elif abs(a-pi/4)<0.2 or abs(a+3*pi/4)<0.2:
+            elif abs(a-pi/4)<0.2 or abs(a+3*pi/4)<0.2: # /
                 self.map.put('/', x, y)
 
 
@@ -246,6 +289,8 @@ class GPS:
         while diff>pi: diff-=2*pi
         state, variance = self.karman.measurement_update(diff)
         self.a = self.a + state
+        while self.a<-pi: self.a+=2*pi
+        while self.a>pi: self.a-=2*pi
         self.x = self.x + lin * cos(self.a)
         self.y = self.y + lin * sin(self.a)
 
@@ -253,13 +298,15 @@ class GPS:
 
 class Map():
     def __init__(self):
-        self.labMap = [[' '] * (CELLCOLS*5-1) for _ in range(CELLROWS*5-1) ]
+        self.empty = '⬪'
+        self.labMap = [[self.empty] * (CELLCOLS*2-1) for _ in range(CELLROWS*2-1) ]
+        self.put('I', 0, 0)
 
     def put(self, char, x, y):
-        print("INSERT",char,"at",y+CELLROWS, x+CELLCOLS)
+        # print("INSERT",char,"at",y+CELLROWS, x+CELLCOLS)
         # if self.labMap[y+CELLROWS][x+CELLCOLS]==' ':
-        if (char == '?' and self.labMap[y+CELLROWS][x+CELLCOLS]==' ') or (char!='?'):
-            self.labMap[y+CELLROWS][x+CELLCOLS] = char
+        if (char == '?' and self.labMap[y+CELLROWS][x+CELLCOLS]==self.empty) or (char!='?'):
+            self.labMap[CELLROWS+y][CELLCOLS+x] = char
 
     def get(self, x, y):
         return self.labMap[y+CELLROWS][x+CELLCOLS]
