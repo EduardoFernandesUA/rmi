@@ -101,10 +101,10 @@ class MyRob(CRobLinkAngs):
         # use line sensors to center coords
         if self.measures.lineSensor[2]=='1' and self.measures.lineSensor[3]=='1' and self.measures.lineSensor[4]=='1':
             if abs(a)<0.1 or abs(a)-pi<0.1: # moving horizontally (center Y)
-                y += (round(y)-y)*0.001
+                y += (round(y)-y)*0.01
                 self.gps.y = y
             elif abs(a)-pi/2<0.1: # moving vertically (center X)
-                x += (round(x)-x)*0.001
+                x += (round(x)-x)*0.01
                 self.gps.x = x
         
 
@@ -159,65 +159,72 @@ class MyRob(CRobLinkAngs):
                 self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
 
         # left sensors
-        # if '1' in self.measures.lineSensor[0:2]:
-        #     sx = x+0.438*cos(a)+0.08*3*cos(a+pi/2)
-        #     sy = y+0.438*sin(a)+0.08*3*sin(a+pi/2)
-        #     ix = round(sx)
-        #     iy = round(sy)
-        #     if ix%2!=0 or iy%2!=0: return
-        #     # if abs(a%(pi/2))>0.2: return
-        #     print("closePaths left:", (rnd(sx), rnd(sy)), (ix, iy), (rnd(sx-ix), rnd(sy-iy)))
-        #     rca = round(cos(a+pi/2))
-        #     rsa = round(sin(a+pi/2))
-        #     if (sx - ix) * rca > 0.2 or (sy - iy) * rsa > 0.2:
-        #         self.map.put('?', ix+round(cos(a+pi/2)), iy+round(sin(a+pi/2)))
-        #
-        # if '1' in self.measures.lineSensor[5:7]:
-        #     sx = x+0.438*cos(a)+0.08*3*cos(a-pi/2)
-        #     sy = y+0.438*sin(a)+0.08*3*sin(a-pi/2)
-        #     ix = round(sx)
-        #     iy = round(sy)
-        #     if ix%2!=0 or iy%2!=0: return
-        #     # if abs(a%(pi/2))>0.2: return
-        #     print("closePaths left:", (rnd(sx), rnd(sy)), (ix, iy), (rnd(sx-ix), rnd(sy-iy)))
-        #     rca = round(cos(a-pi/2))
-        #     rsa = round(sin(a-pi/2))
-        #     if (sx - ix) * rca > 0.2 or (sy - iy) * rsa > 0.2:
-        #         self.map.put('?', ix+round(cos(a-pi/2)), iy+round(sin(a-pi/2)))
+        if self.measures.lineSensor[0]=='1':
+            sx = x+0.438*cos(a)*0.08*3*cos(a+pi/2)
+            sy = y+0.438*sin(a)*0.08*3*sin(a+pi/2)
+            ix = round(sx)
+            iy = round(sy)
+            if ix%2!=0 or iy%2!=0: return
+            rca = round(cos(a))
+            rsa = round(sin(a))
+            if (sx - ix - 0.15) * rca < 0 or (sy - iy - 0.15) * rsa < 0:
+                self.map.put('?', ix+round(cos(a+(pi/4)*3)), iy+round(sin(a+(pi/4)*3)))
+            elif (sx - ix - 0.15) * rca > 0 or (sy - iy - 0.15) * rsa < 0:
+                self.map.put('?', ix+round(cos(a+(pi/4)*1)), iy+round(sin(a+(pi/4)*1)))
+            else:
+                self.map.put('?', ix+round(cos(a+(pi/4)*2)), iy+round(sin(a+(pi/4)*2)))
 
-            # if abs(a%0.785)<0.3 and sqrt(pow(sx-ix, 2) + pow(sy-iy, 2))>0.2 and sqrt(pow(x-ix, 2) + pow(y-iy, 2))<0.2:
-            #     print("FOUND NEW PATH", ix+round(cos(a)), iy+round(sin(a)))
-            #     self.map.put('?', ix+round(cos(a)), iy+round(sin(a)))
+        if self.measures.lineSensor[6]=='1':
+            sx = x+0.438*cos(a)*0.08*3*cos(a-pi/2)
+            sy = y+0.438*sin(a)*0.08*3*sin(a-pi/2)
+            ix = round(sx)
+            iy = round(sy)
+            if ix%2!=0 or iy%2!=0: return
+            rca = round(cos(a))
+            rsa = round(sin(a))
+            if (sx - ix - 0.15) * rca < 0 or (sy - iy - 0.15) * rsa < 0:
+                self.map.put('?', ix+round(cos(a-(pi/4)*3)), iy+round(sin(a-(pi/4)*3)))
+            elif (sx - ix - 0.15) * rca > 0 or (sy - iy - 0.15) * rsa < 0:
+                self.map.put('?', ix+round(cos(a-(pi/4)*1)), iy+round(sin(a-(pi/4)*1)))
+            else:
+                self.map.put('?', ix+round(cos(a-(pi/4)*2)), iy+round(sin(a-(pi/4)*2)))
         
 
 
     def driveTo(self, x, y, a, dx, dy): # dx/dy -> destination x/y
         distance = sqrt(pow(dx-x, 2) + pow(dy-y,2))
         if distance<0.1:# or self.measures.lineSensor[3]=='0': 
-            # self.gps.x += (self.gps.x - round(x))*0.5
-            # self.gps.y += (self.gps.y - round(y))*0.5
-            # return -0.1, 0.1, x, y
-            # self.locs = self.locs[1::]
-            inFront = self.map.get(round(x+cos(a)), round(y+sin(a)))
-            if inFront=='?':
-                self.nextPos = (round(x+round(cos(a))*2), round(y+round(sin(a))*2))
-                self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
-            else:
-                return -0.1, 0.1, x, y
+            for i in [(1-(i%2)*2)*(pi/4*((i+1)//2)) for i in range(8)]:
+                aa = a+i
+                path = self.map.get(round(x+cos(aa)), round(y+sin(aa)))
+                if path =='?':
+                    self.nextPos = (round(x+round(cos(aa))*2), round(y+round(sin(aa))*2))
+                    return self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
+                    
+            return 0.1, -0.1, x, y
 
-        speed = min(0.15, max(0.05, distance/2))
+        speed = min(0.15, max(0.05, distance/5))
 
         da = atan2(dy-y, dx-x)
         dif = da - a
         dif += -pi*2 if (dif>pi) else 2*pi if (dif<-pi) else 0
 
-        print("[drive To]", dif)
-        pidPercentage = 0.5
-        pixL, pidR = self.pid.follow_line(self.measures.lineSensor)
-        turn = -pixL*pidPercentage + dif*(1-pidPercentage)
-        
+        if abs(dif)>0.1:
+            return min(0.15, max(-0.15, -dif/2)), min(0.15, max(-0.15, dif/2)), x, y
+        else:
+            if distance>1 and not '1' in self.measures.lineSensor[2:5]: # miss calculated ?
+                self.map.put('*', round(x+round(cos(a))), round(y+round(sin(a))))
+                self.nextPos = (round(x), round(y))
+                return self.driveTo(x, y, a, self.nextPos[0], self.nextPos[1])
+                return 0, 0, x, y
 
-        return min(0.15, max(-0.15, speed-turn)), min(0.15, max(-0.15, speed+turn)), x, y
+            print("[drive To]", dif)
+            pidPercentage = 0.5
+            pixL, pidR = self.pid.follow_line(self.measures.lineSensor)
+            turn = -pixL*pidPercentage + dif*(1-pidPercentage)
+            
+
+            return min(0.15, max(-0.15, speed-turn)), min(0.15, max(-0.15, speed+turn)), x, y
 
     def fillMap(self, x, y, a):
         x = round(x)
@@ -298,14 +305,15 @@ class GPS:
 
 class Map():
     def __init__(self):
-        self.empty = '⬪'
+        self.empty = ' ' # '⬪'
         self.labMap = [[self.empty] * (CELLCOLS*2-1) for _ in range(CELLROWS*2-1) ]
         self.put('I', 0, 0)
 
     def put(self, char, x, y):
         # print("INSERT",char,"at",y+CELLROWS, x+CELLCOLS)
         # if self.labMap[y+CELLROWS][x+CELLCOLS]==' ':
-        if (char == '?' and self.labMap[y+CELLROWS][x+CELLCOLS]==self.empty) or (char!='?'):
+        mapc = self.labMap[CELLROWS+y][CELLCOLS+x]
+        if (char == '?' and mapc==self.empty) or (char!='?' and mapc!='*') or (char=='*' and mapc=='?'):
             self.labMap[CELLROWS+y][CELLCOLS+x] = char
 
     def get(self, x, y):
